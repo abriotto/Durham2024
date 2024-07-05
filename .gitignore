@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+irishcallcards.net/
+irishcallcards.net.zip
+
 # Distribution / packaging
 .Python
 build/
