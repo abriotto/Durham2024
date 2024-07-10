@@ -68,6 +68,7 @@ def main(image_dir, json_dir, batch_size, output_file):
                 embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embedding
                 
             for i, embedding in enumerate(embeddings):
+                
                 all_embeddings.append({
                     "image_path": image_paths[i],
                     "box": boxes[i].tolist(),
