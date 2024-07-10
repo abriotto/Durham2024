@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision.transforms as T
 import torchvision
-from torchvision.models.detection import FasterRCNN_ResNet50_FPN_Weights
+from torchvision.models.detection import FasterRCNN_ResNet50_FPN_V2_Weights
 import numpy as np
 import cv2
 import os
@@ -12,8 +12,9 @@ import requests
 
 # get the pretrained model from torchvision.models
 # .DEFAULT -> trained on COCO
-model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
+model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(weights=FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT)
 model.eval()
+
 
 # Class labels from official PyTorch documentation for the pretrained model
 COCO_INSTANCE_CATEGORY_NAMES = [
@@ -48,6 +49,10 @@ def get_prediction(img_path, threshold):
     transform = T.Compose([T.ToTensor()])
     img = transform(img)
     pred = model([img])
+
+    COCO_INSTANCE_CATEGORY_NAMES =FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT.meta["categories"]
+    #print(COCO_INSTANCE_CATEGORY_NAMES)
+    #print(pred)
     pred_class = [COCO_INSTANCE_CATEGORY_NAMES[i] for i in list(pred[0]['labels'].numpy())]
     pred_boxes = [[(int(i[0]), int(i[1])), (int(i[2]), int(i[3]))] for i in list(pred[0]['boxes'].detach().numpy())]
     pred_score = list(pred[0]['scores'].detach().numpy())
@@ -56,7 +61,7 @@ def get_prediction(img_path, threshold):
     pred_class = pred_class[:pred_t+1]
     return pred_boxes, pred_class
 
-def object_detection_api(img_path, threshold=0.1, rect_th=3, text_size=3, text_th=3):
+def object_detection_api(img_path, threshold=0.5, rect_th=3, text_size=3, text_th=3):
     """
     object_detection_api
       parameters:
@@ -71,12 +76,12 @@ def object_detection_api(img_path, threshold=0.1, rect_th=3, text_size=3, text_t
           with opencv
         - the final image is displayed
     """
-    boxes, pred_cls = get_prediction(img_path, threshold)
+    boxes, pred_class = get_prediction(img_path, threshold)
     img = cv2.imread(img_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     for i in range(len(boxes)):
         cv2.rectangle(img, boxes[i][0], boxes[i][1], color=(0, 255, 0), thickness=rect_th)
-        cv2.putText(img, pred_cls[i], boxes[i][0], cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 255, 0), thickness=text_th)
+        cv2.putText(img, pred_class[i], boxes[i][0], cv2.FONT_HERSHEY_SIMPLEX, text_size, (0, 255, 0), thickness=text_th)
     # Save the result image
     result_img_path = "result.jpg"
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)  # Convert back to BGR before saving with OpenCV
@@ -91,8 +96,8 @@ def main():
         file.write(response.content)
 
     # Perform object detection
-    img_path = 'object_detection/irishcallcards.net/1321-a.jpg'
-    object_detection_api(img_path, threshold=0.3, rect_th=3, text_size=3, text_th=3)
+    img_path = 'people.jpg'
+    object_detection_api(img_path, threshold=0.5, rect_th=3, text_size=3, text_th=3)
 
 if __name__ == "__main__":
     main()
