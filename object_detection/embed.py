@@ -7,6 +7,7 @@ import json
 import os
 import argparse
 
+
 class BoundingBoxDataset(Dataset):
     def __init__(self, image_dir, json_dir, transform=None):
         self.image_dir = image_dir
