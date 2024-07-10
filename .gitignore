@@ -1,7 +1,7 @@
 datasets/
 *_detections/
-*.ptgit filter-repo --version
-
+object_detection/yolov8m-worldv2.pt
+object_detection/yolov8x-worldv2.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
