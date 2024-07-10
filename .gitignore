@@ -1,5 +1,7 @@
 datasets/
 *_detections/
+*.ptgit filter-repo --version
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
