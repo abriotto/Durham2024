@@ -6,7 +6,8 @@ from PIL import Image
 import json
 import os
 import argparse
-
+import pickle
+import numpy as np
 
 class BoundingBoxDataset(Dataset):
     def __init__(self, image_dir, json_dir, transform=None):
@@ -25,9 +26,8 @@ class BoundingBoxDataset(Dataset):
                     objects = json.load(f)
                     for obj in objects:
                         box = obj['box']
-                        box_tuple = (box['x1'], box['y1'], box['x2'], box['y2'])
-                        self.data.append((image_path, box_tuple))
-
+                        box = np.array([box['x1'], box['y1'], box['x2'], box['y2']])  # Directly create numpy array
+                        self.data.append((image_path, box))
     def __len__(self):
         return len(self.data)
 
@@ -35,15 +35,19 @@ class BoundingBoxDataset(Dataset):
         image_path, box = self.data[idx]
         image = Image.open(image_path).convert('RGB')
 
-        x1, y1, x2, y2 = box
-        crop = image.crop((x1, y1, x2, y2))
+        coordinates = tuple([c for c in box])
+
+        crop = image.crop(coordinates)
         if self.transform:
             crop = self.transform(crop)
-
         return crop, image_path, box
 
+def main(image_dir, json_dir, batch_size, n_workers, device):
+    if not os.path.exists('embeddings'):
+        os.makedirs('embeddings')
 
-def main(image_dir, json_dir, batch_size, output_file):
+    output_file = 'embeddings/' + image_dir.replace('datasets/', '') + '.pkl'
+
     # Preprocessing transformation
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -53,40 +57,48 @@ def main(image_dir, json_dir, batch_size, output_file):
 
     # Create dataset and dataloader
     dataset = BoundingBoxDataset(image_dir, json_dir, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    print('total bboxes: ',len(dataset))
+    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers = n_workers, shuffle=False)
+
     # Load pre-trained ResNet model and modify it to output embeddings
     model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
     model = torch.nn.Sequential(*list(model.children())[:-1])
     model.eval()
 
+    model.to(device)
+
     # Process images and extract embeddings
     all_embeddings = []
-    for batch in dataloader:
+    for i, batch in enumerate(dataloader): #changed to enumerate for efficency
         crops, image_paths, boxes = batch
+        crops.to(device)
         with torch.no_grad():
             embeddings = model(crops).squeeze()
             if len(embeddings.shape) == 1:
                 embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embedding
-                
-            for i, embedding in enumerate(embeddings):
 
+            for i, embedding in enumerate(embeddings):
+                #print(boxes[i], '\n')
+                #print(embedding.shape)
                 all_embeddings.append({
                     "image_path": image_paths[i],
                     "box": boxes[i].tolist(),
-                    "embedding": embedding.tolist() 
-                    
+                    "embedding": embedding.tolist()
                 })
 
     # Save embeddings to the output file
-    with open(output_file, 'w') as f:
-        json.dump(all_embeddings, f)
+    with open(output_file, 'wb') as f:
+        pickle.dump(all_embeddings, f)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract embeddings from bounding boxes using ResNet50.")
     parser.add_argument('--image_dir', type=str, required=True, help='Directory containing images.')
     parser.add_argument('--json_dir', type=str, required=True, help='Directory containing JSON files with bounding boxes.')
-    parser.add_argument('--batch_size', type=int, default=8, help='Batch size for processing images.')
-    parser.add_argument('--output_file', type=str, required=True, help='Output file to save embeddings.')
+    parser.add_argument('--batch_size', type=int, default=2, help='Batch size for processing images.')
+    parser.add_argument('--n_workers', type=int, default=0)
+    parser.add_argument('--device', type = str, default='cpu')
+
+
 
     args = parser.parse_args()
-    main(args.image_dir, args.json_dir, args.batch_size, args.output_file)
+    main(args.image_dir, args.json_dir, args.batch_size, args.n_workers, args.device)

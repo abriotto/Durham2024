@@ -1,87 +1,59 @@
-import torch
-import torchvision.transforms as transforms
-from torchvision.models import resnet50
-from torch.utils.data import Dataset, DataLoader
-from PIL import Image
-import json
 import os
+import json
 import argparse
+from ultralytics import YOLOWorld
 
-class BoundingBoxDataset(Dataset):
-    def __init__(self, image_dir, json_dir, transform=None):
-        self.image_dir = image_dir
-        self.json_dir = json_dir
-        self.transform = transform
-        self.data = []
+def get_params(params):
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--device', type=str, default='cpu',
+                        help="Specifies the device for tensor computations. Defaults to 'cpu'.")
+    parser.add_argument("--model", default='YOLOWorld', type=str)
+    parser.add_argument("--dataset", default='brueg_small', type=str)
+    parser.add_argument("--save", default=True, type=bool)
+    parser.add_argument("--conf", default=0.01, type=float)
+    return parser.parse_args(params)
 
-        # Prepare the dataset by loading all bounding boxes
-        for image_name in os.listdir(image_dir):
-            if image_name.endswith('.jpg'):
-                image_path = os.path.join(image_dir, image_name)
-                json_path = os.path.join(json_dir, image_name.replace('.jpg', '.json'))
+def detect(opts):
+    if opts.model == 'YOLOWorld':
+        model = YOLOWorld("object_detection/yolov8x-worldv2.pt")
+        model.set_classes(['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
+        'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
+        'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
+        'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack', 'umbrella', 'N/A', 'N/A',
+        'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+        'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+        'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
+        'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
+        'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table',
+        'N/A', 'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
+        'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A', 'book',
+        'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush', 'mountain', 'tree', 'house', 'boat', 'mill'])
+    else:
+        raise NotImplementedError
 
-                with open(json_path, 'r') as f:
-                    objects = json.load(f)
-                    for obj in objects:
-                        box = obj['box']
-                        self.data.append((image_path, box))
+    dataset_folder = 'datasets/' + opts.dataset
+    detection_folder = 'object_detection/' + opts.dataset + '_detections'
 
-    def __len__(self):
-        return len(self.data)
+    os.makedirs(detection_folder, exist_ok=True)
 
-    def __getitem__(self, idx):
-        image_path, box = self.data[idx]
-        image = Image.open(image_path).convert('RGB')
+    for img_name in os.listdir(dataset_folder):
+        img_path = os.path.join(dataset_folder, img_name)
+        print(opts.device)
+        results = model.predict(img_path, conf=opts.conf, device=opts.device, half=True)
+        results_json = results[0].tojson(normalize=True, decimals=3)  # Convert results to JSON
 
-        x1, y1, x2, y2 = box['x1'], box['y1'], box['x2'], box['y2']
-        crop = image.crop((x1, y1, x2, y2))
-        if self.transform:
-            crop = self.transform(crop)
+        # Generate JSON file name based on image name
+        json_filename = os.path.splitext(img_name)[0] + '.json'
+        json_filepath = os.path.join(detection_folder, json_filename)
 
-        return crop, image_path, box
+        with open(json_filepath, 'w') as json_file:
+            json_file.write(results_json)  # Write JSON to file
+            print('saved to json!')
 
-def main(image_dir, json_dir, batch_size, output_file):
-    # Preprocessing transformation
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    # Create dataset and dataloader
-    dataset = BoundingBoxDataset(image_dir, json_dir, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-
-    # Load pre-trained ResNet model and modify it to output embeddings
-    model = resnet50(pretrained=True)
-    model = torch.nn.Sequential(*list(model.children())[:-1])
-    model.eval()
-
-    # Process images and extract embeddings
-    all_embeddings = []
-    for batch in dataloader:
-        crops, image_paths, boxes = batch
-        with torch.no_grad():
-            embeddings = model(crops).squeeze()
-            if len(embeddings.shape) == 1:
-                embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embedding
-            for i, embedding in enumerate(embeddings):
-                all_embeddings.append({
-                    "image_path": image_paths[i],
-                    "box": boxes[i],
-                    "embedding": embedding.numpy().tolist()  # Convert to list for JSON serialization
-                })
-
-    # Save embeddings to the output file
-    with open(output_file, 'w') as f:
-        json.dump(all_embeddings, f)
+def main(params):
+    opts = get_params(params)
+    detect(opts)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract embeddings from bounding boxes using ResNet50.")
-    parser.add_argument('--image_dir', type=str, required=True, help='Directory containing images.')
-    parser.add_argument('--json_dir', type=str, required=True, help='Directory containing JSON files with bounding boxes.')
-    parser.add_argument('--batch_size', type=int, default=8, help='Batch size for processing images.')
-    parser.add_argument('--output_file', type=str, required=True, help='Output file to save embeddings.')
-
-    args = parser.parse_args()
-    main(args.image_dir, args.json_dir, args.batch_size, args.output_file)
+    import sys
+    main(sys.argv[1:])
