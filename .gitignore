@@ -1,5 +1,6 @@
 datasets/
 *_detections/
+embeddings/
 object_detection/yolov8m-worldv2.pt
 object_detection/yolov8x-worldv2.pt
 
