@@ -1,4 +1,5 @@
 import torch
+
 import torchvision.transforms as transforms
 from torchvision.models import resnet50, ResNet50_Weights
 from torch.utils.data import Dataset, DataLoader
@@ -8,6 +9,9 @@ import os
 import argparse
 import pickle
 import numpy as np
+import torch.multiprocessing as mp
+import logging
+from tqdm import tqdm
 
 class BoundingBoxDataset(Dataset):
     def __init__(self, image_dir, json_dir, transform=None):
@@ -28,6 +32,7 @@ class BoundingBoxDataset(Dataset):
                         box = obj['box']
                         box = np.array([box['x1'], box['y1'], box['x2'], box['y2']])  # Directly create numpy array
                         self.data.append((image_path, box))
+
     def __len__(self):
         return len(self.data)
 
@@ -43,6 +48,7 @@ class BoundingBoxDataset(Dataset):
         return crop, image_path, box
 
 def main(image_dir, json_dir, batch_size, n_workers, device):
+    mp.set_sharing_strategy('file_system')
     if not os.path.exists('embeddings'):
         os.makedirs('embeddings')
 
@@ -57,11 +63,11 @@ def main(image_dir, json_dir, batch_size, n_workers, device):
 
     # Create dataset and dataloader
     dataset = BoundingBoxDataset(image_dir, json_dir, transform=transform)
-    print('total bboxes: ',len(dataset))
-    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers = n_workers, shuffle=False)
+    print('Total bounding boxes: ', len(dataset))
+    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=n_workers, shuffle=False, pin_memory=False)
 
     # Load pre-trained ResNet model and modify it to output embeddings
-    model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+    model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
     model = torch.nn.Sequential(*list(model.children())[:-1])
     model.eval()
 
@@ -69,36 +75,48 @@ def main(image_dir, json_dir, batch_size, n_workers, device):
 
     # Process images and extract embeddings
     all_embeddings = []
-    for i, batch in enumerate(dataloader): #changed to enumerate for efficency
+    for i, batch in enumerate(tqdm(dataloader, desc="Processing batches")):
         crops, image_paths, boxes = batch
-        crops.to(device)
+        crops = crops.to(device)
         with torch.no_grad():
-            embeddings = model(crops).squeeze()
-            if len(embeddings.shape) == 1:
-                embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embedding
+            with torch.cuda.amp.autocast():
+                embeddings = model(crops).squeeze()
+                if len(embeddings.shape) == 1:
+                    embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embedding
 
-            for i, embedding in enumerate(embeddings):
-                #print(boxes[i], '\n')
-                #print(embedding.shape)
-                all_embeddings.append({
-                    "image_path": image_paths[i],
-                    "box": boxes[i].tolist(),
-                    "embedding": embedding.tolist()
-                })
+        # Move embeddings to CPU before appending
+        embeddings = embeddings.cpu()
 
-    # Save embeddings to the output file
-    with open(output_file, 'wb') as f:
-        pickle.dump(all_embeddings, f)
+        for j, embedding in enumerate(embeddings):
+            all_embeddings.append({
+                "image_path": image_paths[j],
+                "box": boxes[j].numpy().tolist(),
+                "embedding": embedding.numpy().tolist()
+            })
+
+        # Save intermediate results to the output file to avoid OOM
+        # I think the memory issue here was the storing of all the embeddings at once.
+        #to try to avoid tranferring data from GPU to CPU too often, I empirically choes to write 100 embeddings at a time
+        # embeddings have dim=2048, as the last ResNet layer is 2048 neurons.
+        #however, the dimentsionality is very high and might be impractical for later processung steps
+        if (i + 1) % 100 == 0:  # Adjust the frequency as needed
+            with open(output_file, 'ab') as f:
+                pickle.dump(all_embeddings, f)
+            all_embeddings = []  # Clear the list to free memory
+
+    # Save any remaining embeddings to the output file
+    if all_embeddings:
+        with open(output_file, 'ab') as f:
+            pickle.dump(all_embeddings, f)
+        print('Embeddings written!')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract embeddings from bounding boxes using ResNet50.")
-    parser.add_argument('--image_dir', type=str, required=True, help='Directory containing images.')
-    parser.add_argument('--json_dir', type=str, required=True, help='Directory containing JSON files with bounding boxes.')
+    parser.add_argument('--image_dir', type=str, default='datasets/brueg_small', help='Directory containing images.')
+    parser.add_argument('--json_dir', type=str, default='object_detection/brueg_small_detections', help='Directory containing JSON files with bounding boxes.')
     parser.add_argument('--batch_size', type=int, default=2, help='Batch size for processing images.')
-    parser.add_argument('--n_workers', type=int, default=0)
-    parser.add_argument('--device', type = str, default='cpu')
-
-
+    parser.add_argument('--n_workers', type=int, default=0, help='Number of worker processes to use for data loading.')
+    parser.add_argument('--device', type=str, default='cpu', help='Device to run the model on (cpu or cuda).')
 
     args = parser.parse_args()
     main(args.image_dir, args.json_dir, args.batch_size, args.n_workers, args.device)

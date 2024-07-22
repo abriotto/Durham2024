@@ -10,7 +10,7 @@ def get_params(params):
     parser.add_argument("--model", default='YOLOWorld', type=str)
     parser.add_argument("--dataset", default='brueg_small', type=str)
     parser.add_argument("--save", default=True, type=bool)
-    parser.add_argument("--conf", default=0.01, type=float)
+    parser.add_argument("--conf", default=0.1, type=float)
     return parser.parse_args(params)
 
 def detect(opts):
