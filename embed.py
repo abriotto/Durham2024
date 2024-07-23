@@ -52,7 +52,7 @@ def main(image_dir, json_dir, batch_size, n_workers, device):
     if not os.path.exists('embeddings'):
         os.makedirs('embeddings')
 
-    output_file = 'embeddings/' + image_dir.replace('datasets/', '') + '.pkl'
+    output_file = 'embeddings/' + image_dir.replace('datasets/', '') + '_local.pkl'
 
     # Preprocessing transformation
     transform = transforms.Compose([
@@ -112,7 +112,7 @@ def main(image_dir, json_dir, batch_size, n_workers, device):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract embeddings from bounding boxes using ResNet50.")
-    parser.add_argument('--image_dir', type=str, default='datasets/brueg_small', help='Directory containing images.')
+    parser.add_argument('--image_dir', type=str, default='datasets/Brueghel', help='Directory containing images.')
     parser.add_argument('--json_dir', type=str, default='object_detection/brueg_small_detections', help='Directory containing JSON files with bounding boxes.')
     parser.add_argument('--batch_size', type=int, default=2, help='Batch size for processing images.')
     parser.add_argument('--n_workers', type=int, default=0, help='Number of worker processes to use for data loading.')

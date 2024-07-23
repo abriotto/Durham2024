@@ -27,8 +27,8 @@ class ImageDataset(Dataset):
 
 def get_params(params):
     parser = argparse.ArgumentParser(description="Extract embeddings from bounding boxes using ResNet50.")
-    parser.add_argument('--image_dir', type=str, default='datasets/brueg_small', help='Directory containing images.')
-    parser.add_argument('--batch_size', type=int, default=2, help='Batch size for processing images.')
+    parser.add_argument('--image_dir', type=str, default='datasets/Brueghel', help='Directory containing images.')
+    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for processing images.')
     parser.add_argument('--n_workers', type=int, default=0, help='Number of worker processes to use for data loading.')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the model on (cpu or cuda).')
     return parser.parse_args(params)
@@ -38,7 +38,11 @@ def embed_global(opts):
     if not os.path.exists('embeddings'):
         os.makedirs('embeddings')
 
-    output_file = 'embeddings/' + opts.image_dir.replace('datasets/', '') + '.pkl'
+    output_file = 'embeddings/' + opts.image_dir.replace('datasets/', '') + '_global.pkl'
+    output_dir = os.path.dirname(output_file)
+    
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -59,7 +63,7 @@ def embed_global(opts):
     for i, (image_paths, imgs) in enumerate(tqdm(dataloader, desc="Processing batches")):
         imgs = imgs.to(opts.device)
         with torch.no_grad():
-            with torch.cuda.amp.autocast():
+            with torch.cuda.amp.autocast(enabled=(opts.device == 'cuda')):
                 embeddings = model(imgs).squeeze()
                 if len(embeddings.shape) == 1:
                     embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embedding
