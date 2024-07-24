@@ -8,6 +8,7 @@ import argparse
 import pickle
 import torch.multiprocessing as mp
 from tqdm import tqdm
+import uuid
 
 class ImageDataset(Dataset):
     def __init__(self, image_dir, transform=None):
@@ -38,6 +39,10 @@ def embed_global(opts):
     if not os.path.exists('embeddings'):
         os.makedirs('embeddings')
 
+    unique_id = str(uuid.uuid4())
+    temp_dir = os.path.join('embeddings', unique_id)
+    os.makedirs(temp_dir)
+
     output_file = 'embeddings/' + opts.image_dir.replace('datasets/', '') + '_global.pkl'
     output_dir = os.path.dirname(output_file)
     
@@ -59,7 +64,7 @@ def embed_global(opts):
     model.eval()
     model.to(opts.device)
 
-    all_embeddings = []
+    temp_files = []
     for i, (image_paths, imgs) in enumerate(tqdm(dataloader, desc="Processing batches")):
         imgs = imgs.to(opts.device)
         with torch.no_grad():
@@ -71,23 +76,32 @@ def embed_global(opts):
         # Move embeddings to CPU before appending
         embeddings = embeddings.cpu()
 
+        batch_embeddings = []
         for j, embedding in enumerate(embeddings):
-            all_embeddings.append({
+            batch_embeddings.append({
                 "image_path": image_paths[j],
-                "embedding": embedding.numpy().tolist()
+                "embedding": embedding
             })
 
-        # Save intermediate results to the output file to avoid OOM
-        if (i + 1) % 100 == 0:  # Adjust the frequency as needed
-            with open(output_file, 'ab') as f:
-                pickle.dump(all_embeddings, f)
-            all_embeddings = []  # Clear the list to free memory
+        # Save the current batch embeddings to a temporary file
+        temp_file = os.path.join(temp_dir, f'temp_batch_{i}.pkl')
+        with open(temp_file, 'wb') as f:
+            pickle.dump(batch_embeddings, f)
+        temp_files.append(temp_file)
 
-    # Save any remaining embeddings to the output file
-    if all_embeddings:
-        with open(output_file, 'ab') as f:
-            pickle.dump(all_embeddings, f)
-    print('Embeddings written!')
+    # Combine all temporary files into the final output file
+    all_embeddings = []
+    for temp_file in temp_files:
+        with open(temp_file, 'rb') as f:
+            batch_embeddings = pickle.load(f)
+            all_embeddings.extend(batch_embeddings)
+        os.remove(temp_file)  # Clean up the temporary file
+
+    with open(output_file, 'wb') as f:
+        pickle.dump(all_embeddings, f)
+        
+    os.rmdir(temp_dir)  # Clean up the temporary directory
+    print('Embeddings written in', output_file)
 
 def main(params):
     opts = get_params(params)

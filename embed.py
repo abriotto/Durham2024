@@ -1,5 +1,4 @@
 import torch
-
 import torchvision.transforms as transforms
 from torchvision.models import resnet50, ResNet50_Weights
 from torch.utils.data import Dataset, DataLoader
@@ -10,8 +9,8 @@ import argparse
 import pickle
 import numpy as np
 import torch.multiprocessing as mp
-import logging
 from tqdm import tqdm
+import uuid
 
 class BoundingBoxDataset(Dataset):
     def __init__(self, image_dir, json_dir, transform=None):
@@ -52,6 +51,10 @@ def main(image_dir, json_dir, batch_size, n_workers, device):
     if not os.path.exists('embeddings'):
         os.makedirs('embeddings')
 
+    unique_id = str(uuid.uuid4())
+    temp_dir = os.path.join('embeddings', unique_id)
+    os.makedirs(temp_dir)
+
     output_file = 'embeddings/' + image_dir.replace('datasets/', '') + '_local.pkl'
 
     # Preprocessing transformation
@@ -73,8 +76,7 @@ def main(image_dir, json_dir, batch_size, n_workers, device):
 
     model.to(device)
 
-    # Process images and extract embeddings
-    all_embeddings = []
+    temp_files = []
     for i, batch in enumerate(tqdm(dataloader, desc="Processing batches")):
         crops, image_paths, boxes = batch
         crops = crops.to(device)
@@ -87,28 +89,33 @@ def main(image_dir, json_dir, batch_size, n_workers, device):
         # Move embeddings to CPU before appending
         embeddings = embeddings.cpu()
 
+        batch_embeddings = []
         for j, embedding in enumerate(embeddings):
-            all_embeddings.append({
+            batch_embeddings.append({
                 "image_path": image_paths[j],
-                "box": boxes[j].numpy().tolist(),
-                "embedding": embedding.numpy().tolist()
+                "box": boxes[j],
+                "embedding": embedding
             })
 
-        # Save intermediate results to the output file to avoid OOM
-        # I think the memory issue here was the storing of all the embeddings at once.
-        #to try to avoid tranferring data from GPU to CPU too often, I empirically choes to write 100 embeddings at a time
-        # embeddings have dim=2048, as the last ResNet layer is 2048 neurons.
-        #however, the dimentsionality is very high and might be impractical for later processung steps
-        if (i + 1) % 100 == 0:  # Adjust the frequency as needed
-            with open(output_file, 'ab') as f:
-                pickle.dump(all_embeddings, f)
-            all_embeddings = []  # Clear the list to free memory
+        # Save the current batch embeddings to a temporary file
+        temp_file = os.path.join(temp_dir, f'temp_batch_{i}.pkl')
+        with open(temp_file, 'wb') as f:
+            pickle.dump(batch_embeddings, f)
+        temp_files.append(temp_file)
 
-    # Save any remaining embeddings to the output file
-    if all_embeddings:
-        with open(output_file, 'ab') as f:
-            pickle.dump(all_embeddings, f)
-        print('Embeddings written!')
+    # Combine all temporary files into the final output file
+    all_embeddings = []
+    for temp_file in temp_files:
+        with open(temp_file, 'rb') as f:
+            batch_embeddings = pickle.load(f)
+            all_embeddings.extend(batch_embeddings)
+        os.remove(temp_file)  # Clean up the temporary file
+
+    with open(output_file, 'wb') as f:
+        pickle.dump(all_embeddings, f)
+
+    os.rmdir(temp_dir)  # Clean up the temporary directory
+    print('Embeddings written in', output_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract embeddings from bounding boxes using ResNet50.")
