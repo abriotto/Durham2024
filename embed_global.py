@@ -72,6 +72,7 @@ def embed_global(opts):
                 embeddings = model(imgs).squeeze()
                 if len(embeddings.shape) == 1:
                     embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embedding
+    
 
         # Move embeddings to CPU before appending
         embeddings = embeddings.cpu()

@@ -40,7 +40,7 @@ def detect(opts):
         img_path = os.path.join(dataset_folder, img_name)
         print(opts.device)
         results = model.predict(img_path, conf=opts.conf, device=opts.device, half=True)
-        results_json = results[0].tojson(normalize=True, decimals=3)  # Convert results to JSON
+        results_json = results.tojson(normalize=True, decimals=3)  # Convert results to JSON
 
         # Generate JSON file name based on image name
         json_filename = os.path.splitext(img_name)[0] + '.json'

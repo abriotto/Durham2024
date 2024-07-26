@@ -38,10 +38,19 @@ class BoundingBoxDataset(Dataset):
     def __getitem__(self, idx):
         image_path, box = self.data[idx]
         image = Image.open(image_path).convert('RGB')
+        width, height = image.size
 
-        coordinates = tuple([c for c in box])
-
+        # Convert normalized coordinates to pixel coordinates
+        x1, y1, x2, y2 = box
+        x1 = int(x1 * width)
+        y1 = int(y1 * height)
+        x2 = int(x2 * width)
+        y2 = int(y2 * height)
+        
+        coordinates = (x1, y1, x2, y2)
         crop = image.crop(coordinates)
+        #print(crop)
+
         if self.transform:
             crop = self.transform(crop)
         return crop, image_path, box
@@ -81,16 +90,17 @@ def main(image_dir, json_dir, batch_size, n_workers, device):
         crops, image_paths, boxes = batch
         crops = crops.to(device)
         with torch.no_grad():
-            with torch.cuda.amp.autocast():
+            with torch.cuda.amp.autocast(enabled=(device == 'cuda')):
                 embeddings = model(crops).squeeze()
                 if len(embeddings.shape) == 1:
-                    embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embedding
-
+                    embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embeddings
+        
         # Move embeddings to CPU before appending
         embeddings = embeddings.cpu()
 
         batch_embeddings = []
         for j, embedding in enumerate(embeddings):
+            #print(embedding)
             batch_embeddings.append({
                 "image_path": image_paths[j],
                 "box": boxes[j],
@@ -121,7 +131,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract embeddings from bounding boxes using ResNet50.")
     parser.add_argument('--image_dir', type=str, default='datasets/brueg_small', help='Directory containing images.')
     parser.add_argument('--json_dir', type=str, default='object_detection/brueg_small_detections', help='Directory containing JSON files with bounding boxes.')
-    parser.add_argument('--batch_size', type=int, default=2, help='Batch size for processing images.')
+    parser.add_argument('--batch_size', type=int, default=3, help='Batch size for processing images.')
     parser.add_argument('--n_workers', type=int, default=0, help='Number of worker processes to use for data loading.')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the model on (cpu or cuda).')
 
