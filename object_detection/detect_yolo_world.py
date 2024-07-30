@@ -10,26 +10,28 @@ def get_params(params):
     parser.add_argument("--model", default='YOLOWorld', type=str)
     parser.add_argument("--dataset", default='brueg_small', type=str)
     parser.add_argument("--save", default=True, type=bool)
-    parser.add_argument("--conf", default=0.1, type=float)
+    parser.add_argument("--conf", default=0.05, type=float)
+    parser.add_argument("--iou_thres", default=0.5, type=float, help="IOU threshold for NMS")
+    parser.add_argument("--max_detections", default = 100 )
     return parser.parse_args(params)
+
+
+def load_classes(json_path):
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    
+    # Flatten the list of lists into a single list of strings ##ASK IF MAKES SENSE
+    classes = [' '.join(item) for item in data]
+    return classes
+
 
 def detect(opts):
     if opts.model == 'YOLOWorld':
         model = YOLOWorld("object_detection/yolov8x-worldv2.pt")
-        model.set_classes(['__background__', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-        'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A', 'stop sign',
-        'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
-        'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'N/A', 'N/A',
-        'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-        'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-        'bottle', 'N/A', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl',
-        'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza',
-        'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table',
-        'N/A', 'N/A', 'toilet', 'N/A', 'tv', 'mouse', 'keyboard', 'cell phone',
-        'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A', 'book',
-        'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush', 'mountain', 'tree', 'house', 'boat', 'mill'])
-    else:
-        raise NotImplementedError
+        classes = load_classes('object_detection/lvis_v1_class_texts.json')
+        print(classes[:10])  # Print the first 10 classes to verify 
+      
+
 
     dataset_folder = 'datasets/' + opts.dataset
     detection_folder = 'object_detection/' + opts.dataset + '_detections'
@@ -39,8 +41,8 @@ def detect(opts):
     for img_name in os.listdir(dataset_folder):
         img_path = os.path.join(dataset_folder, img_name)
         print(opts.device)
-        results = model.predict(img_path, conf=opts.conf, device=opts.device, half=True)
-        results_json = results.tojson(normalize=True, decimals=3)  # Convert results to JSON
+        results = model.predict(img_path, conf=opts.conf, device=opts.device, half=True, iou=opts.iou_thres, agnostic_nms = True, max_det = 100)
+        results_json = results[0].tojson(normalize=True, decimals=3)  # Convert results to JSON
 
         # Generate JSON file name based on image name
         json_filename = os.path.splitext(img_name)[0] + '.json'
@@ -48,7 +50,7 @@ def detect(opts):
 
         with open(json_filepath, 'w') as json_file:
             json_file.write(results_json)  # Write JSON to file
-            print('saved to json!')
+            print('Saved to JSON:', json_filepath)
 
 def main(params):
     opts = get_params(params)

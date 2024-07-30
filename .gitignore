@@ -4,6 +4,8 @@ embeddings/
 object_detection/yolov8m-worldv2.pt
 object_detection/yolov8x-worldv2.pt
 
+*.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

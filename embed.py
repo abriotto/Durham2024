@@ -64,7 +64,7 @@ def main(image_dir, json_dir, batch_size, n_workers, device):
     temp_dir = os.path.join('embeddings', unique_id)
     os.makedirs(temp_dir)
 
-    output_file = 'embeddings/' + image_dir.replace('datasets/', '') + '_local.pkl'
+    output_file = 'embeddings/' + image_dir.replace('datasets/', '') + '_local_ResNet50_avg.pkl'
 
     # Preprocessing transformation
     transform = transforms.Compose([
