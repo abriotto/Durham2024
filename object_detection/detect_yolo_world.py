@@ -10,7 +10,7 @@ def get_params(params):
     parser.add_argument("--model", default='YOLOWorld', type=str)
     parser.add_argument("--dataset", default='brueg_small', type=str)
     parser.add_argument("--save", default=True, type=bool)
-    parser.add_argument("--conf", default=0.05, type=float)
+    parser.add_argument("--conf", default=0.1, type=float)
     parser.add_argument("--iou_thres", default=0.5, type=float, help="IOU threshold for NMS")
     parser.add_argument("--max_detections", default = 100 )
     return parser.parse_args(params)
@@ -21,7 +21,7 @@ def load_classes(json_path):
         data = json.load(f)
     
     # Flatten the list of lists into a single list of strings ##ASK IF MAKES SENSE
-    classes = [' '.join(item) for item in data]
+    classes = [item for sublist in data for item in sublist]
     return classes
 
 
@@ -30,6 +30,8 @@ def detect(opts):
         model = YOLOWorld("object_detection/yolov8x-worldv2.pt")
         classes = load_classes('object_detection/lvis_v1_class_texts.json')
         print(classes[:10])  # Print the first 10 classes to verify 
+
+        model.set_classes(classes)
       
 
 

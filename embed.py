@@ -55,7 +55,7 @@ class BoundingBoxDataset(Dataset):
             crop = self.transform(crop)
         return crop, image_path, box
 
-def main(image_dir, json_dir, batch_size, n_workers, device):
+def embed(image_dir, json_dir, batch_size, n_workers, device):
     mp.set_sharing_strategy('file_system')
     if not os.path.exists('embeddings'):
         os.makedirs('embeddings')
@@ -136,4 +136,4 @@ if __name__ == "__main__":
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the model on (cpu or cuda).')
 
     args = parser.parse_args()
-    main(args.image_dir, args.json_dir, args.batch_size, args.n_workers, args.device)
+    embed(args.image_dir, args.json_dir, args.batch_size, args.n_workers, args.device)

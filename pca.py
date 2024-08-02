@@ -5,7 +5,7 @@ from sklearn.decomposition import PCA
 
 def get_params(params):
     parser = argparse.ArgumentParser(description="Apply PCA to embeddings.")
-    parser.add_argument('--input_file', type=str, default='embeddings/Brueghel_global.pkl', help='Path to the input pickle file containing embeddings.')
+    parser.add_argument('--input_file', type=str, default='embeddings/Brueghel_local_ResNet50_avg.pkl', help='Path to the input pickle file containing embeddings.')
     parser.add_argument('--n_components', type=int, default=50, help='Number of PCA components.')
     #parser.add_argument('--batch_size', type=int, default=1000, help='Batch size for processing embeddings.')
     return parser.parse_args(params)

@@ -1,8 +1,41 @@
 import numpy as np
 import pickle
 import sklearn.metrics
+from PIL import Image
+import pca
+import utils
+from sklearn.decomposition import PCA
 
-def cos_sim(query_path, embeddings_path):
+def embed_local_query(query, box, pca_components):
+
+    image = Image.open(query).convert('RGB')
+    width, height = image.size
+
+    # Convert normalized coordinates to pixel coordinates
+    x1, y1, x2, y2 = box
+    x1 = int(x1 * width)
+    y1 = int(y1 * height)
+    x2 = int(x2 * width)
+    y2 = int(y2 * height)
+    
+    coordinates = (x1, y1, x2, y2)
+    patch = image.crop(coordinates)
+
+    patch_embedding= utils.embed_one(patch)
+    global_embedding= utils.embed_one(image)
+
+    pca = PCA(n_components=pca_components)
+    pca_patch = pca.fit_transform(patch_embedding)
+    pca_global = pca.fit_transform(global_embedding)
+
+    query_embedding = np.concatenate((np.array(global_embedding), np.array(patch_embedding)), axis=None)
+    query_dict = {'image_path': query, 'box': box, 'embedding': query_embedding}
+
+    return query_dict
+
+
+def cos_sim(query_path, embeddings_path, patch_box = None):
+    
     query_embeddings_dicts = []
     
     # Load all embeddings from the file
@@ -18,10 +51,20 @@ def cos_sim(query_path, embeddings_path):
     for e in query_embeddings_dicts:
         all_embeddings_dicts.remove(e)
     
-    print(len(query_embeddings_dicts), 'detections found for query')
-
+    
     # Prepare the embeddings for similarity calculation
-    query_embeddings = [e['embedding'] for e in query_embeddings_dicts]
+    if patch_box:
+        query_embeddings = embed_local_query(query_path, patch_box, 50)
+        query_embeddings_dicts = {}
+        query_embeddings_dicts['image_path'] = query_path
+        query_embeddings_dicts['box'] = patch_box
+        query_embeddings_dicts['embedding'] = query_embeddings
+
+
+    else: 
+        print(len(query_embeddings_dicts), 'detections found for query')
+        query_embeddings = [e['embedding'] for e in query_embeddings_dicts]
+
     all_embeddings = [e['embedding'] for e in all_embeddings_dicts]
 
     # Ensure embeddings are consistent
@@ -38,9 +81,9 @@ def cos_sim(query_path, embeddings_path):
     # Get the top 5 matches for each query embedding with similarity values
     top_matches_list = []
     for i in range(similarity_mat.shape[0]):
-        top_5_indices = np.argsort(-similarity_mat[i])[:5]
-        top_5_matches = [(all_embeddings_dicts[j], similarity_mat[i][j]) for j in top_5_indices]
-        top_matches_list.append(top_5_matches)
+        top_10_indices = np.argsort(-similarity_mat[i])[:10]
+        top_10_matches = [(all_embeddings_dicts[j], similarity_mat[i][j]) for j in top_10_indices]
+        top_matches_list.append(top_10_matches)
 
     return [(query_embeddings_dicts[i], top_matches_list[i]) for i in range(len(query_embeddings_dicts))]
 
