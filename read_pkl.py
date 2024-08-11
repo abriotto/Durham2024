@@ -1,6 +1,6 @@
 import pickle
 import numpy as np
-input_file = '/home/annab/Durham2024/embeddings/Brueghel_conc.pkl'
+input_file = '/home/annab/Durham2024/embeddings/Brueghel_query/resnet50_conc_pca_50.pkl'
 
 
 with open(input_file, 'rb') as f:
@@ -13,7 +13,7 @@ for i in data:
  if len(i['embedding'])!= 100:
       raise(ValueError)
  
-assert np.array_equal(data[1]['embedding'][:50], data[0]['embedding'][:50])
+print(data[0])
 
 
    

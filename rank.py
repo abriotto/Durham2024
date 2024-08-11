@@ -2,36 +2,9 @@ import numpy as np
 import pickle
 import sklearn.metrics
 from PIL import Image
-import pca
 import utils
 from sklearn.decomposition import PCA
 
-def embed_local_query(query, box, pca_components):
-
-    image = Image.open(query).convert('RGB')
-    width, height = image.size
-
-    # Convert normalized coordinates to pixel coordinates
-    x1, y1, x2, y2 = box
-    x1 = int(x1 * width)
-    y1 = int(y1 * height)
-    x2 = int(x2 * width)
-    y2 = int(y2 * height)
-    
-    coordinates = (x1, y1, x2, y2)
-    patch = image.crop(coordinates)
-
-    patch_embedding= utils.embed_one(patch)
-    global_embedding= utils.embed_one(image)
-
-    pca = PCA(n_components=pca_components)
-    pca_patch = pca.fit_transform(patch_embedding)
-    pca_global = pca.fit_transform(global_embedding)
-
-    query_embedding = np.concatenate((np.array(global_embedding), np.array(patch_embedding)), axis=None)
-    query_dict = {'image_path': query, 'box': box, 'embedding': query_embedding}
-
-    return query_dict
 
 
 def cos_sim(query_path, embeddings_path, patch_box = None):
@@ -86,6 +59,71 @@ def cos_sim(query_path, embeddings_path, patch_box = None):
         top_matches_list.append(top_10_matches)
 
     return [(query_embeddings_dicts[i], top_matches_list[i]) for i in range(len(query_embeddings_dicts))]
+
+
+def find_top_matches_for_patch(sim_mat_row, all_embeddings_dicts, n):
+    """
+    Find the top `n` unique matches based on `sim_mat_row` and `image_path` from `all_embeddings_dicts`.
+    """
+    # Get the indices that would sort the array in descending order
+    top_n_indices = np.argsort(-sim_mat_row)
+    
+    # Initialize a set to track seen image_paths and a list to hold the top matches
+    seen_image_paths = set()
+    top_n_matches = []
+    
+    # Iterate over the indices to find unique top matches
+    for idx in top_n_indices:
+        if len(top_n_matches) >= n:
+            break
+        
+        entry = all_embeddings_dicts[idx]
+        image_path = entry['image_path']
+        similarity = sim_mat_row[idx]
+        
+        # Check if the image_path has already been seen
+        if image_path not in seen_image_paths:
+            top_n_matches.append((entry, similarity))
+            seen_image_paths.add(image_path)
+    
+    return top_n_matches
+
+def rank_local_to_global(query_embeddings_path, embeddings_path, top_n):
+    '''
+    Returns top matches for each query.
+
+    query is a tuple(img_path, [box])
+    '''
+    with open(query_embeddings_path, 'rb') as f:
+        query_embeddings_dicts = pickle.load(f)
+    
+
+    with open(embeddings_path, 'rb') as f:
+        all_embeddings_dicts = pickle.load(f)
+
+    all_embeddings = [e['embedding'] for e in all_embeddings_dicts]
+    embeddings_queries = [e['embedding'] for e in query_embeddings_dicts]
+
+    #find sim mat for all queries at once
+    similarity_mat = sklearn.metrics.pairwise.cosine_similarity(np.array(embeddings_queries), np.array(all_embeddings)) 
+    print(similarity_mat.shape)
+
+    top_matches_list = []
+    for i in range(similarity_mat.shape[0]):
+        top_matches = find_top_matches_for_patch(similarity_mat[i], all_embeddings_dicts, top_n)
+        top_matches_list.append(top_matches)
+    
+    
+    return top_matches_list
+
+
+
+
+
+    
+
+
+
 
 # Example usage
 # results = cos_sim('path/to/query/image.jpg', 'path/to/embeddings.pkl')
