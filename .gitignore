@@ -1,5 +1,6 @@
 datasets/
 results/
+results/breueghelTest_resnet50/
 *_detections/
 embeddings/
 object_detection/yolov8m-worldv2.pt
