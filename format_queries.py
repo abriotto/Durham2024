@@ -5,6 +5,9 @@ import argparse
 import utils
 
 def main(query_file_path, query_detection_folder, img_folder):
+    cats_dict = {}
+    cats = []
+    file_names = []
 
     if not os.path.exists(query_detection_folder):
         os.mkdir(query_detection_folder)
@@ -38,12 +41,35 @@ def main(query_file_path, query_detection_folder, img_folder):
                  'global_matches': global_matches}
             ]
 
+            if category not in cats:
+                cats.append(category)
+                cats_dict[category] = global_matches
+             
+
+
             #TO FIX!!!!!!! IN THIS WAY ONLY ONE QUERY IS FOUND
-
-            with open(json_filepath, 'w') as f:
-                json.dump(p_d, f, indent=2)
             
+            if json_filename in file_names:
+                with open(json_filepath, 'r') as f:
+                    dict_list= json.load(f)
+                dict_list.extend(p_d)
+                with open(json_filepath, 'w') as f:
+                    json.dump(dict_list, f, indent = 2)
 
+
+
+            else:
+                with open(json_filepath, 'w') as f:
+                    json.dump(p_d, f, indent=2)
+            
+            file_names.append(json_filename)
+            cats.append(category)
+            
+    with open(os.path.basename(query_file_path)+'_categories.json', 'w') as f:
+        json.dump(cats_dict, f, indent=2)
+    
+    ##make the dictionaries in one list
+        
             
 
 if __name__ == "__main__":

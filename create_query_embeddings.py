@@ -6,7 +6,7 @@ import numpy as np
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', type=str, default='resnet50')
-    parser.add_argument('--dataset_detections_dir', type=str)
+    parser.add_argument('--detections_dir', type=str)
     parser.add_argument('--dataset_path', type=str, default='datasets/Brueghel', help='Directory containing images.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for processing images.')
     parser.add_argument('--n_workers', type=int, default=0, help='Number of worker processes to use for data loading.')
@@ -33,7 +33,7 @@ def embed_query(model, dataset_path, detections_dir, batch_size, n_workers, devi
 
 def main():
     args = parse_args()
-    embed_query(args.model, args.dataset_path, args.dataset_detections_dir, args.batch_size, args.n_workers, args.device, args.patch_t_matrix, args.global_embeddings)
+    embed_query(args.model, args.dataset_path, args.detections_dir, args.batch_size, args.n_workers, args.device, args.patch_t_matrix, args.global_embeddings)
 
 if __name__ == "__main__":
     main()  # Call the main function with parentheses

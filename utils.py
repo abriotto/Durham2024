@@ -85,12 +85,13 @@ def create_transform():
 def initialize_model(model_name, device):
     if model_name == 'resnet50':
         model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+        model = torch.nn.Sequential(*list(model.children())[:-1])
     elif model_name == 'vgg19':
         model = vgg19(weights=VGG19_Weights.IMAGENET1K_V1)
+        model = torch.nn.Sequential(*list(model.children())[:-2])
 
     else: raise(NotImplementedError)
         
-    model = torch.nn.Sequential(*list(model.children())[:-1])
     model.eval()
     model.to(device)
     return model
@@ -112,7 +113,7 @@ def embed_global(model, image_dir, batch_size=32, n_workers=0, device='cpu'):
     mp.set_sharing_strategy('file_system')
 
     dataset_name = os.path.basename(image_dir)
-    dataset_embeddings_folder = os.path.join('embeddings', dataset_name)
+    dataset_embeddings_folder = os.path.join('embeddings', dataset_name, model)
 
     if not os.path.exists(dataset_embeddings_folder):
         os.makedirs(dataset_embeddings_folder)
@@ -159,7 +160,7 @@ def embed_global(model, image_dir, batch_size=32, n_workers=0, device='cpu'):
             all_embeddings.extend(batch_embeddings)
         os.remove(temp_file)  # Clean up the temporary file
 
-    output_file = os.path.join(dataset_embeddings_folder, model + '_global.pkl')
+    output_file = os.path.join(dataset_embeddings_folder, 'global.pkl')
 
     with open(output_file, 'wb') as f:
         pickle.dump(all_embeddings, f)
@@ -173,9 +174,9 @@ def embed_global(model, image_dir, batch_size=32, n_workers=0, device='cpu'):
 def embed_patches(model, image_dir, json_dir, batch_size, n_workers, device, query = False):
     dataset_name = os.path.basename(image_dir)
     if query :
-        dataset_embeddings_folder = os.path.join('embeddings', dataset_name + '_query')
+        dataset_embeddings_folder = os.path.join('embeddings', dataset_name + '_queries', model)
         
-    else: dataset_embeddings_folder = os.path.join('embeddings', dataset_name)
+    else: dataset_embeddings_folder = os.path.join('embeddings', dataset_name, model)
 
     mp.set_sharing_strategy('file_system')
 
@@ -230,7 +231,7 @@ def embed_patches(model, image_dir, json_dir, batch_size, n_workers, device, que
             all_embeddings.extend(batch_embeddings)
         os.remove(temp_file)  # Clean up the temporary file
     
-    output_file = os.path.join(dataset_embeddings_folder, model + '_local.pkl')
+    output_file = os.path.join(dataset_embeddings_folder, 'local.pkl')
 
     with open(output_file, 'wb') as f:
         pickle.dump(all_embeddings, f)
@@ -296,6 +297,8 @@ def apply_pca(input_file, n_components):
         data = pickle.load(f)
     
     embeddings = np.array([np.array(item['embedding']) for item in data])
+    print(embeddings.shape)
+    print(embeddings[1].shape)
 
     pca = PCA(n_components=n_components)
     pca_embeddings = pca.fit_transform(embeddings)  # Fit and transform in one step

@@ -6,7 +6,7 @@ import utils
 from sklearn.decomposition import PCA
 
 
-
+###NOT USED NOW
 def cos_sim(query_path, embeddings_path, patch_box = None):
     
     query_embeddings_dicts = []
@@ -61,7 +61,7 @@ def cos_sim(query_path, embeddings_path, patch_box = None):
     return [(query_embeddings_dicts[i], top_matches_list[i]) for i in range(len(query_embeddings_dicts))]
 
 
-def find_top_matches_for_patch(sim_mat_row, all_embeddings_dicts, n):
+def find_top_matches_for_patch(query_path, sim_mat_row, all_embeddings_dicts, n):
     """
     Find the top `n` unique matches based on `sim_mat_row` and `image_path` from `all_embeddings_dicts`.
     """
@@ -82,7 +82,7 @@ def find_top_matches_for_patch(sim_mat_row, all_embeddings_dicts, n):
         similarity = sim_mat_row[idx]
         
         # Check if the image_path has already been seen
-        if image_path not in seen_image_paths:
+        if image_path not in seen_image_paths and image_path!= query_path:
             top_n_matches.append((entry, similarity))
             seen_image_paths.add(image_path)
     
@@ -96,12 +96,16 @@ def rank_local_to_global(query_embeddings_path, embeddings_path, top_n):
     '''
     with open(query_embeddings_path, 'rb') as f:
         query_embeddings_dicts = pickle.load(f)
+
+    query_paths = [e['image_path'] for e in query_embeddings_dicts]
+    #print(query_paths)
     
 
     with open(embeddings_path, 'rb') as f:
         all_embeddings_dicts = pickle.load(f)
 
-    all_embeddings = [e['embedding'] for e in all_embeddings_dicts]
+    
+    all_embeddings= [e['embedding'] for e in all_embeddings_dicts]
     embeddings_queries = [e['embedding'] for e in query_embeddings_dicts]
 
     #find sim mat for all queries at once
@@ -110,8 +114,8 @@ def rank_local_to_global(query_embeddings_path, embeddings_path, top_n):
 
     top_matches_list = []
     for i in range(similarity_mat.shape[0]):
-        top_matches = find_top_matches_for_patch(similarity_mat[i], all_embeddings_dicts, top_n)
-        top_matches_list.append(top_matches)
+        top_matches = find_top_matches_for_patch(query_paths[i], similarity_mat[i], all_embeddings_dicts, top_n)
+        top_matches_list.append((query_embeddings_dicts[i],top_matches))
     
     
     return top_matches_list
