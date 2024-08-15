@@ -3,13 +3,13 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='resnet50')
+    parser.add_argument('--model', type=str, default='vgg19')
     parser.add_argument('--dataset_detections_dir', type=str)
     parser.add_argument('--pca_components', type=int, default=50)  # Note: default should be an integer
     parser.add_argument('--dataset_path', type=str, default='datasets/Brueghel', help='Directory containing images.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for processing images.')
     parser.add_argument('--n_workers', type=int, default=0, help='Number of worker processes to use for data loading.')
-    parser.add_argument('--device', type=str, default='cuda', help='Device to run the model on (cpu or cuda).')
+    parser.add_argument('--device', type=str, default='cpu', help='Device to run the model on (cpu or cuda).')
     return parser.parse_args()
 
 def embed(model, dataset_path, detections_dir, pca_components, batch_size, n_workers, device):

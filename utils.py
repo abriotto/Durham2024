@@ -2,7 +2,7 @@
 
 import torch
 import torchvision.transforms as transforms
-from torchvision.models import resnet50, ResNet50_Weights, vgg19, VGG19_Weights
+from torchvision.models import resnet50, resnet18, ResNet50_Weights, vgg19, VGG19_Weights, ResNet18_Weights
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 import os
@@ -84,17 +84,23 @@ def create_transform():
 
 def initialize_model(model_name, device):
     if model_name == 'resnet50':
-        model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
-        model = torch.nn.Sequential(*list(model.children())[:-1])
+        model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+        layer = model._modules.get('avgpool')
+        layer_size = 2048
+    elif model_name == 'resnet18':
+        model = resnet18(ResNet18_Weights.IMAGENET1K_V1)
+        layer = model._modules.get('avgpool')
+        layer_size = 512
     elif model_name == 'vgg19':
         model = vgg19(weights=VGG19_Weights.IMAGENET1K_V1)
-        model = torch.nn.Sequential(*list(model.children())[:-2])
+        layer = model._modules.get('classifier')[0] #here I get firt lin layer
+        layer_size=4096
 
     else: raise(NotImplementedError)
         
     model.eval()
     model.to(device)
-    return model
+    return model, layer, layer_size
 
 def prepare_image(img_path_or_pil, transform):
     if isinstance(img_path_or_pil, str):
@@ -109,11 +115,11 @@ def prepare_image(img_path_or_pil, transform):
     
     return image
 
-def embed_global(model, image_dir, batch_size=32, n_workers=0, device='cpu'):
+def embed_global(model_name, image_dir, batch_size=32, n_workers=0, device='cpu'):
     mp.set_sharing_strategy('file_system')
 
     dataset_name = os.path.basename(image_dir)
-    dataset_embeddings_folder = os.path.join('embeddings', dataset_name, model)
+    dataset_embeddings_folder = os.path.join('embeddings', dataset_name, model_name)
 
     if not os.path.exists(dataset_embeddings_folder):
         os.makedirs(dataset_embeddings_folder)
@@ -128,16 +134,32 @@ def embed_global(model, image_dir, batch_size=32, n_workers=0, device='cpu'):
     dataset = ImageDataset(image_dir, transform)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=n_workers, shuffle=False, pin_memory=True)
 
-    model_ready = initialize_model(model, device)
+    model, layer, layer_size = initialize_model(model_name, device)
 
     temp_files = []
     for i, (image_paths, imgs) in enumerate(tqdm(dataloader, desc="Processing batches")):
         imgs = imgs.to(device)
+        batch_size = imgs.size(0) 
+        embeddings = torch.zeros(batch_size, layer_size)
+
         with torch.no_grad():
             with torch.cuda.amp.autocast(enabled=(device == 'cuda')):
-                embeddings = model_ready(imgs).squeeze()
-                if len(embeddings.shape) == 1:
-                    embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embedding
+                def copy_data(m, i, o):
+                    # Flatten the output tensor
+                    #print("Layer output shape:", o.data.shape)
+                    o_flat = o.data.view(o.data.size(0), -1)
+                    
+                    # Check for shape match and copy
+                    if embeddings.shape == o_flat.shape:
+                        embeddings.copy_(o_flat)
+                    else:
+                        raise RuntimeError(f"Shape mismatch: embeddings shape {embeddings.shape} vs output shape {o_flat.shape}")
+                    
+                h = layer.register_forward_hook(copy_data)
+
+                model(imgs)
+                h.remove()
+            
 
         embeddings = embeddings.cpu()
 
@@ -194,18 +216,34 @@ def embed_patches(model, image_dir, json_dir, batch_size, n_workers, device, que
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=n_workers, shuffle=False, pin_memory=False)
 
     # Load pre-trained ResNet model and modify it to output embeddings
-    model_ready = initialize_model(model, device)
+    model, layer, layer_size = initialize_model(model, device)
     temp_files = []
+
+
     for i, batch in enumerate(tqdm(dataloader, desc="Processing batches")):
-        crops, image_paths, boxes = batch
-        crops = crops.to(device)
+        imgs, image_paths, boxes = batch
+        imgs = imgs.to(device)
+        batch_size = imgs.size(0) 
+        embeddings = torch.zeros(batch_size, layer_size)
+
         with torch.no_grad():
             with torch.cuda.amp.autocast(enabled=(device == 'cuda')):
-                embeddings = model_ready(crops).squeeze()
-                if len(embeddings.shape) == 1:
-                    embeddings = embeddings.unsqueeze(0)  # Handle case when there's only one embeddings
+                def copy_data(m, i, o):
+                    # Flatten the output tensor
+                    #print("Layer output shape:", o.data.shape)
+                    o_flat = o.data.view(o.data.size(0), -1)
+                    
+                    # Check for shape match and copy
+                    if embeddings.shape == o_flat.shape:
+                        embeddings.copy_(o_flat)
+                    else:
+                        raise RuntimeError(f"Shape mismatch: embeddings shape {embeddings.shape} vs output shape {o_flat.shape}")
+                    
+                h = layer.register_forward_hook(copy_data)
+
+                model(imgs)
+                h.remove()
         
-        # Move embeddings to CPU before appending
         embeddings = embeddings.cpu()
 
         batch_embeddings = []
